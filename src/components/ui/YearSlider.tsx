@@ -29,7 +29,7 @@ export const YearSlider: React.FC = () => {
       
       <div className="flexjustify-between w-full text-xs text-white/40 font-mono tracking-widest uppercase">
           <span>{minYear}</span>
-          <span>Timeline</span>
+          <span>-</span>
           <span>{maxYear}</span>
       </div>
     </div>
