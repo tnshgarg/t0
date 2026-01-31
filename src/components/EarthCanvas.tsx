@@ -6,17 +6,16 @@ import { _GlobeView as GlobeView, FlyToInterpolator } from '@deck.gl/core';
 // @ts-ignore
 import { TileLayer } from '@deck.gl/geo-layers';
 // @ts-ignore
-import { BitmapLayer, GeoJsonLayer } from '@deck.gl/layers';
+import { BitmapLayer, ScatterplotLayer, GeoJsonLayer, TextLayer } from '@deck.gl/layers';
 // @ts-ignore
-import { HexagonLayer } from '@deck.gl/aggregation-layers';
-// @ts-ignore
-import { AmbientLight, PointLight, LightingEffect } from '@deck.gl/core';
+import { HeatmapLayer } from '@deck.gl/aggregation-layers';
 
 import { useTimeEngine } from '../context/TimeEngine';
-import { generateNightLights, generatePredictiveData, generateVegetationData, generateTemperatureData, generateInvertedMask } from '../data/dummy';
+import { generateNightLights, generateUrbanBoundaries, generatePredictiveData, generateVegetationData, generateTemperatureData, generateInvertedMask, COUNTRY_DATA } from '../data/dummy';
 import { CitySelector, CITIES } from './ui/CitySelector';
 import { LayerPanel } from './ui/LayerPanel';
 import { FutureSlider } from './ui/FutureSlider';
+import { DashboardOverlay } from './ui/DashboardOverlay';
 import { useCinematicStory } from '../hooks/useCinematicStory';
 import { AnimatePresence, motion } from 'framer-motion';
 
@@ -61,18 +60,13 @@ export const EarthCanvas: React.FC = () => {
   const [layerState, setLayerState] = useState<LayerState>({
     nightLights: true,
     urbanBoundaries: true,
-    predictiveGhost: false,
-    vegetation: false,
-    temperature: false,
+    predictiveGhost: true,
+    vegetation: true,
+    temperature: true,
   });
   const [futureYear, setFutureYear] = useState(2035);
-  
-  /* PREMIUM LIGHTING */
-  const ambientLight = new AmbientLight({ color: [255, 255, 255], intensity: 1.5 });
-  const pointLight = new PointLight({ color: [255, 255, 255], intensity: 2.0, position: [10, 20, 80000] });
-  const effects = [new LightingEffect({ ambientLight, pointLight })];
-
   const [inIntro, setInIntro] = useState(true);
+  const [showDashboard, setShowDashboard] = useState(false);
 
   // Trigger Intro Animation on Mount
   useEffect(() => {
@@ -126,13 +120,25 @@ export const EarthCanvas: React.FC = () => {
     { id: 'predictiveGhost', name: 'Future Projection', color: '#A855F7', enabled: layerState.predictiveGhost },
   ];
 
-  // Memoize data generation (Performance Optimization)
-  const nightLightsData = useMemo(() => generateNightLights(500), []);
+  // Memoize data generation (Performance Optimization) - DYNAMIC TIME SCALING
+  const nightLightsData = useMemo(() => generateNightLights(15000, currentYear), [currentYear]);
+  const urbanData = useMemo(() => generateUrbanBoundaries(20, currentYear), [currentYear]);
   // Calculate growth percent based on future year (more years = more growth)
   const growthPercent = useMemo(() => Math.max(10, (futureYear - currentYear) * 3), [futureYear, currentYear]);
   const predictiveData = useMemo(() => generatePredictiveData(currentYear, growthPercent), [currentYear, growthPercent]);
-  const vegetationData = useMemo(() => generateVegetationData(500), []);
-  const temperatureData = useMemo(() => generateTemperatureData(500), []);
+  // BOOST DATA: 50,000 points for Vegetation to ensure Heatmap density
+  const vegetationData = useMemo(() => generateVegetationData(50000, currentYear), [currentYear]);
+  const temperatureData = useMemo(() => generateTemperatureData(12000, currentYear), [currentYear]);
+  
+  // DEBUG: Log data counts
+  useEffect(() => {
+    console.log("DeckGL Data Counts:", {
+      nightLights: nightLightsData.length,
+      vegetation: vegetationData.length,
+      temperature: temperatureData.length,
+      urbanBoundaries: urbanData.features?.length
+    });
+  }, [nightLightsData, vegetationData, temperatureData, urbanData]);
   
   // Generate Spotlight Mask for cinematic mode
   const spotlightMask = useMemo(() => {
@@ -156,7 +162,7 @@ export const EarthCanvas: React.FC = () => {
   // Earth Base Layer
   const earthTileLayer = new TileLayer({
     id: 'earth-tiles',
-    data: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    data: 'https://basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png',
     minZoom: 0,
     maxZoom: 19,
     tileSize: 256,
@@ -171,123 +177,114 @@ export const EarthCanvas: React.FC = () => {
     }
   });
 
-  // Build layers array based on state - PREMIUM HEXAGONLAYER VISUALIZATION
+  // Build layers array - SIMPLE VISIBLE DATA POINTS
   const layers = [
     earthTileLayer,
 
-    // Night Lights - Premium 3D Hexagon Towers
-    layerState.nightLights && new HexagonLayer({
-      id: 'night-lights',
-      gpuAggregation: true,
-      data: nightLightsData,
-      getPosition: (d: any) => d.position,
-      radius: 50000,
-      elevationScale: nightLightsData?.length ? 50 : 0,
-      elevationRange: [0, 3000],
-      extruded: true,
-      pickable: true,
-      coverage: 0.85,
-      upperPercentile: 100,
-      material: { ambient: 0.64, diffuse: 0.6, shininess: 32, specularColor: [51, 51, 51] },
-      transitions: { elevationScale: 3000 },
-      colorRange: [
-        [1, 152, 189], [73, 227, 206], [216, 254, 181],
-        [254, 237, 177], [254, 173, 84], [209, 55, 78]
-      ],
+    // World Borders (Real Geometries)
+    new GeoJsonLayer({
+      id: 'world-borders',
+      data: 'https://d2ad6b4ur7yvpq.cloudfront.net/naturalearth-3.3.0/ne_50m_admin_0_countries.geojson',
+      stroked: true,
+      filled: false,
+      lineWidthMinPixels: 0.5,
+      getLineColor: [255, 255, 255, 40], // Subtle white lines
+      pickable: false,
     }),
 
-    // Urban Growth - Cyan Hexagon Density Grid
-    layerState.urbanBoundaries && new HexagonLayer({
-      id: 'urban-boundaries',
-      gpuAggregation: true,
+    // Night Lights - Bulk Data Visualization
+    layerState.nightLights && new ScatterplotLayer({
+      id: 'night-lights',
       data: nightLightsData,
       getPosition: (d: any) => d.position,
-      radius: 80000,
-      elevationScale: nightLightsData?.length ? 40 : 0,
-      elevationRange: [0, 1500],
-      extruded: true,
-      coverage: 0.75,
+      getFillColor: [255, 200, 80, 150], // Lower opacity for density
+      getRadius: (d: any) => 5000 + d.intensity * 5000, // Smaller radius (5-10km)
+      radiusMinPixels: 0.5,
+      radiusMaxPixels: 3,
+      opacity: 0.8,
       pickable: false,
-      upperPercentile: 95,
-      material: { ambient: 0.64, diffuse: 0.6, shininess: 32, specularColor: [51, 51, 51] },
-      transitions: { elevationScale: 3000 },
-      colorRange: [
-        [50, 180, 220], [60, 190, 230], [80, 200, 240],
-        [100, 210, 250], [120, 220, 255], [150, 240, 255]
-      ],
+    }),
+
+    // Urban Boundaries - Polygon outlines
+    layerState.urbanBoundaries && new GeoJsonLayer({
+      id: 'urban-boundaries',
+      data: urbanData as any,
+      stroked: true,
+      filled: true,
+      lineWidthMinPixels: 2,
+      getLineColor: [100, 200, 255, 200],
+      getFillColor: [100, 180, 255, 40],
+      pickable: false,
       updateTriggers: { data: currentYear }
     }),
 
-    // Predictive Ghost - Purple Phantom Projection
-    layerState.predictiveGhost && new HexagonLayer({
+    // Predictive Ghost - Purple projection outlines
+    layerState.predictiveGhost && new GeoJsonLayer({
       id: 'predictive-ghost',
-      gpuAggregation: true,
-      data: predictiveData.features?.map((f: any) => ({
-        position: f.geometry.coordinates[0]?.[0] || [0, 0],
-        intensity: 0.7,
-        weight: f.properties?.growthPercent || 30
-      })) || [],
-      getPosition: (d: any) => d.position,
-      radius: 100000,
-      elevationScale: 30,
-      extruded: true,
-      coverage: 0.6,
+      data: predictiveData as any,
+      stroked: true,
+      filled: true,
+      lineWidthMinPixels: 2,
+      getLineColor: [168, 85, 247, 180],
+      getFillColor: [168, 85, 247, 30],
       pickable: false,
-      material: { ambient: 0.64, diffuse: 0.6, shininess: 32, specularColor: [51, 51, 51] },
-      transitions: { elevationScale: 3000 },
-      colorRange: [
-        [120, 60, 180], [140, 70, 200], [160, 80, 220],
-        [168, 85, 247], [180, 100, 255], [200, 130, 255]
-      ],
     }),
 
-    // Vegetation - Forest Green Hexagon Columns
-    layerState.vegetation && new HexagonLayer({
+    // Vegetation - Dense Dots (Design Thinking)
+    layerState.vegetation && new ScatterplotLayer({
       id: 'vegetation',
-      gpuAggregation: true,
       data: vegetationData,
       getPosition: (d: any) => d.position,
-      radius: 70000,
-      elevationScale: vegetationData?.length ? 40 : 0,
-      elevationRange: [0, 1200],
-      extruded: true,
-      coverage: 0.7,
+      getFillColor: [34, 197, 94, 200], // Vibrant Green
+      getRadius: 10000, // Smaller radius for "dot" look
+      radiusMinPixels: 1.5,
+      radiusMaxPixels: 3,
+      opacity: 0.8,
       pickable: false,
-      material: { ambient: 0.64, diffuse: 0.6, shininess: 32, specularColor: [51, 51, 51] },
-      transitions: { elevationScale: 3000 },
-      colorRange: [
-        [34, 140, 70], [34, 160, 80], [40, 180, 90],
-        [50, 197, 100], [60, 210, 110], [80, 230, 130]
-      ],
     }),
 
-    // Temperature - Heat Island Hexagon Towers
-    layerState.temperature && new HexagonLayer({
+    // Temperature - Dense Heat Dots
+    layerState.temperature && new ScatterplotLayer({
       id: 'temperature',
-      gpuAggregation: true,
       data: temperatureData,
       getPosition: (d: any) => d.position,
-      radius: 60000,
-      elevationScale: temperatureData?.length ? 45 : 0,
-      elevationRange: [0, 2000],
-      extruded: true,
-      coverage: 0.8,
-      pickable: false,
-      material: { ambient: 0.64, diffuse: 0.6, shininess: 32, specularColor: [51, 51, 51] },
-      transitions: { elevationScale: 3000 },
-      colorRange: [
-        [255, 230, 150], [255, 200, 100], [255, 160, 60],
-        [255, 120, 40], [255, 80, 20], [255, 40, 0]
+      // Dynamic Color: Yellow (Low) -> Red (High)
+      getFillColor: (d: any) => [
+        255, 
+        Math.floor(255 * (1 - Math.min(1, d.intensity))), 
+        0, 
+        180
       ],
+      getRadius: 15000,
+      radiusMinPixels: 2,
+      radiusMaxPixels: 5,
+      opacity: 0.7,
+      pickable: false,
     }),
 
-    // Cinematic Spotlight Vignette - dims areas outside focus during story
+    // Cinematic Spotlight Vignette
     spotlightMask && new GeoJsonLayer({
       id: 'spotlight-vignette',
       data: spotlightMask as any,
       filled: true,
       stroked: false,
       getFillColor: [0, 0, 5, Math.floor(spotlightOpacity * 255)],
+    }),
+
+    // Country Labels
+    new TextLayer({
+      id: 'country-labels',
+      data: COUNTRY_DATA,
+      getPosition: (d: any) => d.position,
+      getText: (d: any) => d.name,
+      getSize: 12,
+      getSizeScale: 1,
+      getColor: [200, 220, 255, 200],
+      fontFamily: '"Geist Mono", monospace', // Tech look
+      fontWeight: 600,
+      outlineWidth: 3,
+      outlineColor: [0, 0, 0, 255],
+      billboard: true,
     }),
   ].filter(Boolean);
 
@@ -319,25 +316,15 @@ export const EarthCanvas: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Cinematic Controls */}
+      {/* Top Right Controls - DASHBOARD ONLY */}
       <div className="absolute top-6 right-6 z-30 flex gap-4">
-        {!isPlaying && !inIntro ? (
-          <button
-            onClick={startStory}
-            className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-full font-bold shadow-lg hover:scale-105 transition-transform"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-            PLAY STORY
-          </button>
-        ) : (
-          <button
-            onClick={stopStory}
-            className="flex items-center gap-2 px-4 py-2 bg-red-500/80 text-white rounded-full font-bold shadow-lg hover:bg-red-500 transition-colors"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>
-            STOP
-          </button>
-        )}
+        <button
+          onClick={() => setShowDashboard(true)}
+          className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-full font-bold shadow-2xl hover:bg-blue-500 hover:scale-105 transition-all backdrop-blur-md border border-white/20"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+          DASHBOARD
+        </button>
       </div>
 
       {/* Cinematic Overlay */}
@@ -368,9 +355,9 @@ export const EarthCanvas: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Layer Control Panel - Hide during cinematic or intro */}
+      {/* Layer Control Panel - No Limit */}
       {!isPlaying && !inIntro && (
-      <LayerPanel layers={layerConfig} onToggle={handleLayerToggle} maxLayers={3}>
+      <LayerPanel layers={layerConfig} onToggle={handleLayerToggle}>
         <FutureSlider 
           projectionYear={futureYear} 
           onYearChange={setFutureYear} 
@@ -378,6 +365,11 @@ export const EarthCanvas: React.FC = () => {
         />
       </LayerPanel>
       )}
+
+      {/* Dashboard Overlay */}
+      <AnimatePresence>
+        {showDashboard && <DashboardOverlay year={currentYear} onClose={() => setShowDashboard(false)} />}
+      </AnimatePresence>
 
       <DeckGL
         views={new GlobeView({ resolution: 10 })}
@@ -391,7 +383,6 @@ export const EarthCanvas: React.FC = () => {
           keyboard: true,
         }}
         layers={layers}
-        effects={effects} // Add lighting
         useDevicePixels={true}
         style={{ background: '#000005' }}
       >

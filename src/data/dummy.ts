@@ -1,35 +1,52 @@
-// Major city coordinates for realistic data placement
+// Major city coordinates with SAFE SPREAD limits (to avoid ocean spill)
 export const CITY_CENTERS = [
-  { name: 'New York', lat: 40.7, lng: -74.0 },
-  { name: 'London', lat: 51.5, lng: -0.1 },
-  { name: 'Tokyo', lat: 35.7, lng: 139.7 },
-  { name: 'Mumbai', lat: 19.1, lng: 72.9 },
-  { name: 'Shanghai', lat: 31.2, lng: 121.5 },
-  { name: 'São Paulo', lat: -23.5, lng: -46.6 },
-  { name: 'Lagos', lat: 6.5, lng: 3.4 },
-  { name: 'Cairo', lat: 30.0, lng: 31.2 },
-  { name: 'Sydney', lat: -33.9, lng: 151.2 },
-  { name: 'Moscow', lat: 55.8, lng: 37.6 },
-  { name: 'Delhi', lat: 28.6, lng: 77.2 },
-  { name: 'Beijing', lat: 39.9, lng: 116.4 },
-  { name: 'Los Angeles', lat: 34.1, lng: -118.2 },
-  { name: 'Paris', lat: 48.9, lng: 2.4 },
-  { name: 'Istanbul', lat: 41.0, lng: 29.0 },
-  { name: 'Karachi', lat: 24.9, lng: 67.1 },
-  { name: 'Buenos Aires', lat: -34.6, lng: -58.4 },
-  { name: 'Jakarta', lat: -6.2, lng: 106.8 },
-  { name: 'Seoul', lat: 37.6, lng: 127.0 },
-  { name: 'Singapore', lat: 1.3, lng: 103.8 },
+  { name: 'New York', lat: 40.7, lng: -74.0, safeSpread: 0.8 },
+  { name: 'London', lat: 51.5, lng: -0.1, safeSpread: 1.0 },
+  { name: 'Tokyo', lat: 35.7, lng: 139.7, safeSpread: 0.6 },
+  { name: 'Mumbai', lat: 19.1, lng: 72.9, safeSpread: 0.7 },
+  { name: 'Shanghai', lat: 31.2, lng: 121.5, safeSpread: 0.8 },
+  { name: 'São Paulo', lat: -23.5, lng: -46.6, safeSpread: 1.5 },
+  { name: 'Lagos', lat: 6.5, lng: 3.4, safeSpread: 0.8 },
+  { name: 'Cairo', lat: 30.0, lng: 31.2, safeSpread: 1.5 },
+  { name: 'Sydney', lat: -33.9, lng: 151.2, safeSpread: 0.5 },
+  { name: 'Moscow', lat: 55.8, lng: 37.6, safeSpread: 4.0 }, // Inland
+  { name: 'Delhi', lat: 28.6, lng: 77.2, safeSpread: 3.0 }, // Inland
+  { name: 'Beijing', lat: 39.9, lng: 116.4, safeSpread: 2.0 },
+  { name: 'Los Angeles', lat: 34.1, lng: -118.2, safeSpread: 0.8 },
+  { name: 'Paris', lat: 48.9, lng: 2.4, safeSpread: 2.0 },
+  { name: 'Istanbul', lat: 41.0, lng: 29.0, safeSpread: 0.8 },
+  { name: 'Karachi', lat: 24.9, lng: 67.1, safeSpread: 0.7 },
+  { name: 'Buenos Aires', lat: -34.6, lng: -58.4, safeSpread: 1.0 },
+  { name: 'Jakarta', lat: -6.2, lng: 106.8, safeSpread: 0.5 }, // Island
+  { name: 'Seoul', lat: 37.6, lng: 127.0, safeSpread: 0.8 },
+  { name: 'Singapore', lat: 1.3, lng: 103.8, safeSpread: 0.2 }, // Small island
 ];
 
-export const generateNightLights = (count: number) => {
+// Major Country Labels for Map Context
+export const COUNTRY_DATA = [
+  { name: "USA", position: [-98.6, 39.8] },
+  { name: "China", position: [103.8, 36.6] },
+  { name: "India", position: [79.0, 22.0] },
+  { name: "Brazil", position: [-53.2, -10.3] },
+  { name: "Russia", position: [99.5, 63.3] },
+  { name: "Australia", position: [134.4, -24.3] },
+  { name: "Canada", position: [-107.4, 58.5] },
+  { name: "Euro", position: [13.4, 51.2] }, // Generic label for Europe
+  { name: "Africa", position: [20.7, 5.4] }, // Continental label (simplification)
+];
+
+export const generateNightLights = (count: number, year: number = 2012) => {
   const data = [];
-  const pointsPerCity = Math.floor(count / CITY_CENTERS.length);
+  // Simulating urban growth: 3% increase per year from base year 2012
+  const growthMultiplier = 1 + ((year - 2012) * 0.03);
+  const effectiveCount = Math.floor(count * growthMultiplier);
+  const pointsPerCity = Math.floor(effectiveCount / CITY_CENTERS.length);
   
   for (const city of CITY_CENTERS) {
-    // Dense core points (high intensity)
-    for (let i = 0; i < pointsPerCity * 0.4; i++) {
-      const spread = 1.5; // Tight core
+    // Dense core points (Stay TIGHT to center)
+    for (let i = 0; i < pointsPerCity * 0.5; i++) {
+        // Core spread is very small (10% of safe spread)
+      const spread = city.safeSpread * 0.1; 
       data.push({
         position: [
           city.lng + (Math.random() - 0.5) * spread,
@@ -39,28 +56,16 @@ export const generateNightLights = (count: number) => {
         weight: 80 + Math.random() * 20,
       });
     }
-    // Medium density ring
-    for (let i = 0; i < pointsPerCity * 0.35; i++) {
-      const spread = 3.5;
+    // Suburbs (Stay within safe limits)
+    for (let i = 0; i < pointsPerCity * 0.5; i++) {
+      const spread = city.safeSpread; // Max safe spread
       data.push({
         position: [
           city.lng + (Math.random() - 0.5) * spread,
           city.lat + (Math.random() - 0.5) * spread,
         ],
-        intensity: 0.5 + Math.random() * 0.3,
-        weight: 40 + Math.random() * 40,
-      });
-    }
-    // Sparse outer suburbs
-    for (let i = 0; i < pointsPerCity * 0.25; i++) {
-      const spread = 6;
-      data.push({
-        position: [
-          city.lng + (Math.random() - 0.5) * spread,
-          city.lat + (Math.random() - 0.5) * spread,
-        ],
-        intensity: 0.2 + Math.random() * 0.3,
-        weight: 10 + Math.random() * 30,
+        intensity: 0.3 + Math.random() * 0.4,
+        weight: 30 + Math.random() * 50,
       });
     }
   }
@@ -80,15 +85,23 @@ export const generateUrbanBoundaries = (count: number, year: number) => {
     const baseRadius = 0.5 + Math.random() * 0.5;
     const radius = baseRadius + (growthFactor * 0.8); // Grow based on year
 
-    // Simple circle polygon (approximated with 8 points)
+    // ORGANIC SHAPE GENERATION (No more circles)
     const poly = [];
-    for (let angle = 0; angle <= 360; angle += 45) {
+    const numPoints = 16; // More points for jagged look
+    const noiseOffset = Math.random() * 100;
+    
+    for (let angle = 0; angle <= 360; angle += (360/numPoints)) {
       const rad = (angle * Math.PI) / 180;
+      // Perlin-like noise simulation using sin/cos combinations
+      const noise = Math.sin(angle * 0.1 + noiseOffset) * 0.3 + Math.cos(angle * 0.3) * 0.2;
+      const r = radius * (0.8 + Math.abs(noise)); // Vary radius organically
+      
       poly.push([
-        city.lng + Math.cos(rad) * radius,
-        city.lat + Math.sin(rad) * radius * 0.7, // Flatten slightly for lat
+        city.lng + Math.cos(rad) * r,
+        city.lat + Math.sin(rad) * r * 0.8, // Flatten for latitude perspective
       ]);
     }
+    poly.push(poly[0]); // Close loop
 
     features.push({
       type: 'Feature',
@@ -171,68 +184,67 @@ export const generatePredictiveData = (baseYear: number, growthPercent: number) 
   };
 };
 
-export const generateVegetationData = (count: number) => {
+export const generateVegetationData = (count: number, year: number = 2012) => {
   const data = [];
+  // Simulating deforestation: 1.5% decrease per year
+  const declineMultiplier = Math.max(0.5, 1 - ((year - 2012) * 0.015)); 
+  const effectiveCount = Math.floor(count * declineMultiplier);
+
   // Use random locations but AVOID city centers to simulate inverse correlation
   // Focus on tropical regions and forested areas
-  const forestRegions = [
-    { lat: 0, lng: -60, spread: 25 },    // Amazon
-    { lat: 5, lng: 20, spread: 15 },     // Congo Basin
-    { lat: 0, lng: 115, spread: 12 },    // Borneo/Indonesia
-    { lat: 45, lng: -120, spread: 10 },  // Pacific Northwest
-    { lat: 60, lng: 90, spread: 20 },    // Siberian Taiga
-    { lat: -35, lng: 150, spread: 8 },   // Australia forests
+  // SAFE FOREST ZONES (Rectangles [minLng, maxLng, minLat, maxLat])
+  // Carefully defined so they are purely INLAND
+  const forestZones = [
+      { name: "Amazon", bounds: [-70, -55, -10, 2] }, // Deep inland Amazon
+      { name: "Congo", bounds: [12, 28, -4, 4] }, // Central Africa
+      { name: "Siberia", bounds: [80, 120, 55, 65] }, // Deep Russia
+      { name: "EastUS", bounds: [-85, -78, 35, 42] }, // Appalachians (Safe)
+      { name: "CentralEurope", bounds: [10, 25, 46, 52] }, // Alps/Carpathians
+      { name: "India Central", bounds: [77, 83, 18, 24] }, // Deccan Plateau
   ];
 
-  for (const region of forestRegions) {
-    const regionPoints = Math.floor(count / forestRegions.length);
-    for (let i = 0; i < regionPoints; i++) {
-      const lat = region.lat + (Math.random() - 0.5) * region.spread;
-      const lng = region.lng + (Math.random() - 0.5) * region.spread;
+  for (const zone of forestZones) {
+    const zonePoints = Math.floor(effectiveCount / forestZones.length);
+    const [minLng, maxLng, minLat, maxLat] = zone.bounds;
+    
+    for (let i = 0; i < zonePoints; i++) {
+      const lat = minLat + Math.random() * (maxLat - minLat);
+      const lng = minLng + Math.random() * (maxLng - minLng);
       
-      // Check if near city
-      let isNearCity = false;
-      for (const city of CITY_CENTERS) {
-        const dist = Math.sqrt(Math.pow(lat - city.lat, 2) + Math.pow(lng - city.lng, 2));
-        if (dist < 4) {
-          isNearCity = true;
-          break;
-        }
-      }
-
-      if (!isNearCity) {
-        data.push({
-          position: [lng, lat],
-          intensity: 0.6 + Math.random() * 0.4,
-          weight: 50 + Math.random() * 50,
-          height: 0.5 + Math.random() * 0.5,
-        });
-      }
+      data.push({
+        position: [lng, lat],
+        intensity: 0.6 + Math.random() * 0.4,
+        weight: 50 + Math.random() * 50,
+        height: 0.5 + Math.random() * 0.5,
+      });
     }
   }
   return data;
 };
 
-export const generateTemperatureData = (count: number) => {
+export const generateTemperatureData = (count: number, year: number = 2012) => {
   const data = [];
+  // Global warming simulation: Increase intensity and spread over years
+  const warmingOffset = (year - 2012) * 0.02; 
+
   // Correlate with cities (Urban Heat Island effect)
   for (const city of CITY_CENTERS) {
     const pointsPerCity = Math.floor(count / CITY_CENTERS.length);
     // Hot core
     for (let i = 0; i < pointsPerCity * 0.5; i++) {
-      const spread = 2;
+      const spread = (city as any).safeSpread * 0.2; // Very tight core
       data.push({
         position: [
           city.lng + (Math.random() - 0.5) * spread,
           city.lat + (Math.random() - 0.5) * spread
         ],
-        intensity: 0.85 + Math.random() * 0.15,
+        intensity: Math.min(1, 0.85 + Math.random() * 0.15 + warmingOffset),
         weight: 70 + Math.random() * 30,
       });
     }
-    // Warm outer ring
+    // Warm outer ring (Safe spread)
     for (let i = 0; i < pointsPerCity * 0.5; i++) {
-      const spread = 5;
+        const spread = (city as any).safeSpread || 1.0; 
       data.push({
         position: [
           city.lng + (Math.random() - 0.5) * spread,
