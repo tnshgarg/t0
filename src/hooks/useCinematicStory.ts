@@ -36,7 +36,7 @@ export const useCinematicStory = (
     }));
 
     // 2. Set Layers
-    setLayerState((prev: any) => ({
+    setLayerState((_prev: any) => ({
       nightLights: false,
       urbanBoundaries: false,
       vegetation: false,

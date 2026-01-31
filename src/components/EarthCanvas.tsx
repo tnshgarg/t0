@@ -85,7 +85,7 @@ export const EarthCanvas: React.FC = () => {
     return () => clearTimeout(timer);
   }, []);
 
-  const { isPlaying, currentScene, startStory, stopStory, progress } = useCinematicStory(
+  const { isPlaying, currentScene, progress } = useCinematicStory(
     setViewState,
     setLayerState,
     setYear

@@ -97,7 +97,7 @@ const Globe: React.FC<GlobeProps> = ({
       transitions: {
         elevationScale: 2000
       },
-      colorRange,
+      colorRange: colorRange as any,
     }),
 
     // Urban Boundaries - Subtle filled polygons
