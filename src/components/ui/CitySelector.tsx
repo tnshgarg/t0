@@ -25,7 +25,7 @@ export const CitySelector: React.FC<CitySelectorProps> = ({ onCitySelect, select
     <motion.div 
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
-      className="absolute left-6 top-24 z-20"
+      className="absolute left-6 top-32 z-20"
     >
       <div className="backdrop-blur-md bg-black/50 rounded-xl border border-white/10 p-3 shadow-2xl">
         <h3 className="text-xs uppercase tracking-widest text-white/50 mb-3 font-mono">Fly To City</h3>

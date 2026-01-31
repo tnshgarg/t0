@@ -37,35 +37,37 @@ export const COUNTRY_DATA = [
 
 export const generateNightLights = (count: number, year: number = 2012) => {
   const data = [];
-  // Simulating urban growth: 3% increase per year from base year 2012
-  const growthMultiplier = 1 + ((year - 2012) * 0.03);
+  // Simulating urban growth: 15% increase per year for more dramatic effect
+  const growthMultiplier = 1 + ((year - 2012) * 0.15);
   const effectiveCount = Math.floor(count * growthMultiplier);
   const pointsPerCity = Math.floor(effectiveCount / CITY_CENTERS.length);
   
   for (const city of CITY_CENTERS) {
     // Dense core points (Stay TIGHT to center)
-    for (let i = 0; i < pointsPerCity * 0.5; i++) {
-        // Core spread is very small (10% of safe spread)
-      const spread = city.safeSpread * 0.1; 
+    for (let i = 0; i < pointsPerCity * 0.4; i++) {
+        // Core spread
+      const spread = city.safeSpread * 0.15; 
       data.push({
         position: [
           city.lng + (Math.random() - 0.5) * spread,
           city.lat + (Math.random() - 0.5) * spread,
         ],
-        intensity: 0.8 + Math.random() * 0.2, // High intensity core
-        weight: 80 + Math.random() * 20,
+        intensity: 0.9 + Math.random() * 0.1, 
+        weight: 90 + Math.random() * 10,
       });
     }
-    // Suburbs (Stay within safe limits)
-    for (let i = 0; i < pointsPerCity * 0.5; i++) {
-      const spread = city.safeSpread; // Max safe spread
+    // Suburbs - Expanding Outwards
+    for (let i = 0; i < pointsPerCity * 0.6; i++) {
+      // Spread increases with year slightly too
+      const yearSpreadFactor = 1 + (year - 2012) * 0.05;
+      const spread = city.safeSpread * yearSpreadFactor; 
       data.push({
         position: [
           city.lng + (Math.random() - 0.5) * spread,
           city.lat + (Math.random() - 0.5) * spread,
         ],
-        intensity: 0.3 + Math.random() * 0.4,
-        weight: 30 + Math.random() * 50,
+        intensity: 0.4 + Math.random() * 0.5,
+        weight: 30 + Math.random() * 60,
       });
     }
   }
@@ -74,16 +76,20 @@ export const generateNightLights = (count: number, year: number = 2012) => {
 
 export const generateUrbanBoundaries = (count: number, year: number) => {
   const features = [];
-  // Simulating growth by expanding radius based on year
-  const growthFactor = (year - 2012) / 12; 
+  // Simulating growth by expanding radius based on year (Variable removed, calculated inside loop)
   
   // Use subset of cities for urban boundaries
   const citiesToUse = CITY_CENTERS.slice(0, Math.min(count, CITY_CENTERS.length));
   
   for (let i = 0; i < citiesToUse.length; i++) {
     const city = citiesToUse[i];
+    // Start small, grow with year
+    const growth = (year - 2000) * 0.05; // Growth factor
     const baseRadius = 0.5 + Math.random() * 0.5;
-    const radius = baseRadius + (growthFactor * 0.8); // Grow based on year
+    
+    // Clamp radius to safeSpread to AVOID OCEAN
+    const safeMax = (city as any).safeSpread || 1.5;
+    const radius = Math.min(safeMax, baseRadius + growth);
 
     // ORGANIC SHAPE GENERATION (No more circles)
     const poly = [];
@@ -94,11 +100,18 @@ export const generateUrbanBoundaries = (count: number, year: number) => {
       const rad = (angle * Math.PI) / 180;
       // Perlin-like noise simulation using sin/cos combinations
       const noise = Math.sin(angle * 0.1 + noiseOffset) * 0.3 + Math.cos(angle * 0.3) * 0.2;
-      const r = radius * (0.8 + Math.abs(noise)); // Vary radius organically
+      
+      // Apply noise but KEEP WITHIN SAFE LIMITS
+      // We reduce radius slightly if noise pushes it out
+      const r = radius * (0.8 + noise * 0.4); 
+      
+      // Flatten lat for perspective
+      const latOffset = Math.sin(rad) * r * 0.8;
+      const lngOffset = Math.cos(rad) * r;
       
       poly.push([
-        city.lng + Math.cos(rad) * r,
-        city.lat + Math.sin(rad) * r * 0.8, // Flatten for latitude perspective
+        city.lng + lngOffset,
+        city.lat + latOffset, 
       ]);
     }
     poly.push(poly[0]); // Close loop
@@ -186,37 +199,48 @@ export const generatePredictiveData = (baseYear: number, growthPercent: number) 
 
 export const generateVegetationData = (count: number, year: number = 2012) => {
   const data = [];
-  // Simulating deforestation: 1.5% decrease per year
-  const declineMultiplier = Math.max(0.5, 1 - ((year - 2012) * 0.015)); 
-  const effectiveCount = Math.floor(count * declineMultiplier);
+  
+  // Deforestation Simulation:
+  // As year increases, we lose significant cover.
+  // 2012 = 100%, 2050 = 40% (Aggressive loss for visual impact)
+  const healthFactor = Math.max(0.2, 1 - ((year - 2012) * 0.025)); 
 
-  // Use random locations but AVOID city centers to simulate inverse correlation
-  // Focus on tropical regions and forested areas
-  // SAFE FOREST ZONES (Rectangles [minLng, maxLng, minLat, maxLat])
-  // Carefully defined so they are purely INLAND
-  const forestZones = [
-      { name: "Amazon", bounds: [-70, -55, -10, 2] }, // Deep inland Amazon
-      { name: "Congo", bounds: [12, 28, -4, 4] }, // Central Africa
-      { name: "Siberia", bounds: [80, 120, 55, 65] }, // Deep Russia
-      { name: "EastUS", bounds: [-85, -78, 35, 42] }, // Appalachians (Safe)
-      { name: "CentralEurope", bounds: [10, 25, 46, 52] }, // Alps/Carpathians
-      { name: "India Central", bounds: [77, 83, 18, 24] }, // Deccan Plateau
+  // Specific Forest Clusters (Not whole continents)
+  const FOREST_CLUSTERS = [
+    { name: "Amazon", lat: -3.4, lng: -62.2, radius: 15, weight: 0.35 },
+    { name: "Congo", lat: -0.7, lng: 20.5, radius: 8, weight: 0.20 },
+    { name: "Indonesian Rainforest", lat: -0.7, lng: 113.9, radius: 6, weight: 0.15 },
+    { name: "Siberian Taiga", lat: 60.0, lng: 100.0, radius: 20, weight: 0.15 }, // Large but sparse
+    { name: "Canadian Boreal", lat: 55.0, lng: -100.0, radius: 15, weight: 0.10 },
+    { name: "Eastern Australia", lat: -25.0, lng: 147.0, radius: 4, weight: 0.05 },
   ];
 
-  for (const zone of forestZones) {
-    const zonePoints = Math.floor(effectiveCount / forestZones.length);
-    const [minLng, maxLng, minLat, maxLat] = zone.bounds;
+  const effectiveCount = Math.floor(count * healthFactor);
+
+  for (const cluster of FOREST_CLUSTERS) {
+    // Number of points for this cluster based on its weight
+    const clusterPoints = Math.floor(effectiveCount * cluster.weight);
     
-    for (let i = 0; i < zonePoints; i++) {
-      const lat = minLat + Math.random() * (maxLat - minLat);
-      const lng = minLng + Math.random() * (maxLng - minLng);
-      
-      data.push({
-        position: [lng, lat],
-        intensity: 0.6 + Math.random() * 0.4,
-        weight: 50 + Math.random() * 50,
-        height: 0.5 + Math.random() * 0.5,
-      });
+    // As year increases, the effective radius shrinks (Receding edges)
+    // 2012 -> Full radius. 2050 -> 70% radius.
+    const recedingRadius = cluster.radius * (1 - ((year - 2012) * 0.005));
+
+    for (let i = 0; i < clusterPoints; i++) {
+        // Random point within circle distribution
+        const r = Math.sqrt(Math.random()) * recedingRadius; // Sqrt for uniform circular spread, or remove for center-dense
+        const theta = Math.random() * 2 * Math.PI;
+        
+        const latOffset = r * Math.sin(theta) * 0.5; // Flatten lat slightly for perspective
+        const lngOffset = r * Math.cos(theta);
+
+        data.push({
+          position: [
+            cluster.lng + lngOffset,
+            cluster.lat + latOffset,
+          ],
+          intensity: 0.5 + Math.random() * 0.5, // Varied lushness
+          weight: 10 + Math.random() * 90,
+        });
     }
   }
   return data;
@@ -232,7 +256,7 @@ export const generateTemperatureData = (count: number, year: number = 2012) => {
     const pointsPerCity = Math.floor(count / CITY_CENTERS.length);
     // Hot core
     for (let i = 0; i < pointsPerCity * 0.5; i++) {
-      const spread = (city as any).safeSpread * 0.2; // Very tight core
+      const spread = (city as any).safeSpread * 0.2; 
       data.push({
         position: [
           city.lng + (Math.random() - 0.5) * spread,
@@ -242,15 +266,17 @@ export const generateTemperatureData = (count: number, year: number = 2012) => {
         weight: 70 + Math.random() * 30,
       });
     }
-    // Warm outer ring (Safe spread)
+    // Warm outer ring (Expanding with global warming)
     for (let i = 0; i < pointsPerCity * 0.5; i++) {
-        const spread = (city as any).safeSpread || 1.0; 
+        // Spread gets wider as year increases
+        const spreadMultiplier = 1 + (year - 2012) * 0.03;
+        const spread = ((city as any).safeSpread || 1.0) * spreadMultiplier; 
       data.push({
         position: [
           city.lng + (Math.random() - 0.5) * spread,
           city.lat + (Math.random() - 0.5) * spread
         ],
-        intensity: 0.5 + Math.random() * 0.35,
+        intensity: 0.5 + Math.random() * 0.35 + (warmingOffset * 0.5),
         weight: 30 + Math.random() * 40,
       });
     }

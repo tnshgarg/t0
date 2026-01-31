@@ -1,4 +1,5 @@
 import { TimeEngineProvider } from './context/TimeEngine'
+import { UIProvider } from './context/UIContext'
 import { SplitViewProvider, useSplitView } from './context/SplitViewContext'
 import { Layout } from './components/ui/Layout'
 import { EarthCanvas } from './components/EarthCanvas'
@@ -12,11 +13,13 @@ const CanvasRouter = () => {
 function App() {
   return (
     <TimeEngineProvider>
-      <SplitViewProvider>
-        <Layout>
-          <CanvasRouter />
-        </Layout>
-      </SplitViewProvider>
+      <UIProvider>
+        <SplitViewProvider>
+          <Layout>
+            <CanvasRouter />
+          </Layout>
+        </SplitViewProvider>
+      </UIProvider>
     </TimeEngineProvider>
   )
 }

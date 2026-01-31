@@ -11,11 +11,13 @@ import { BitmapLayer, ScatterplotLayer, GeoJsonLayer, TextLayer } from '@deck.gl
 import { HeatmapLayer } from '@deck.gl/aggregation-layers';
 
 import { useTimeEngine } from '../context/TimeEngine';
+import { useUI } from '../context/UIContext';
 import { generateNightLights, generateUrbanBoundaries, generatePredictiveData, generateVegetationData, generateTemperatureData, generateInvertedMask, COUNTRY_DATA } from '../data/dummy';
 import { CitySelector, CITIES } from './ui/CitySelector';
 import { LayerPanel } from './ui/LayerPanel';
 import { FutureSlider } from './ui/FutureSlider';
 import { DashboardOverlay } from './ui/DashboardOverlay';
+import { ZoomControls } from './ui/ZoomControls';
 import { useCinematicStory } from '../hooks/useCinematicStory';
 import { AnimatePresence, motion } from 'framer-motion';
 
@@ -58,15 +60,19 @@ export const EarthCanvas: React.FC = () => {
   const [viewState, setViewState] = useState(INITIAL_VIEW_STATE);
   const [selectedCity, setSelectedCity] = useState<string | null>(null);
   const [layerState, setLayerState] = useState<LayerState>({
-    nightLights: true,
-    urbanBoundaries: true,
-    predictiveGhost: true,
-    vegetation: true,
-    temperature: true,
+    nightLights: false,
+    urbanBoundaries: false,
+    predictiveGhost: false,
+    vegetation: false,
+    temperature: false,
   });
   const [futureYear, setFutureYear] = useState(2035);
   const [inIntro, setInIntro] = useState(true);
-  const [showDashboard, setShowDashboard] = useState(false);
+  const { isDashboardOpen, setDashboardOpen } = useUI();
+  // Sync local state if needed OR just use global directly.
+  // We will replace 'showDashboard' and 'setShowDashboard' with 'isDashboardOpen' and 'setDashboardOpen'
+  const showDashboard = isDashboardOpen;
+  const setShowDashboard = setDashboardOpen;
 
   // Trigger Intro Animation on Mount
   useEffect(() => {
@@ -113,11 +119,41 @@ export const EarthCanvas: React.FC = () => {
 
   // Layer config for UI
   const layerConfig = [
-    { id: 'nightLights', name: 'Night Lights', color: '#FFB432', enabled: layerState.nightLights },
-    { id: 'urbanBoundaries', name: 'Urban Growth', color: '#64C8FF', enabled: layerState.urbanBoundaries },
-    { id: 'vegetation', name: 'Green Cover', color: '#22C55E', enabled: layerState.vegetation },
-    { id: 'temperature', name: 'Temperature', color: '#F97316', enabled: layerState.temperature },
-    { id: 'predictiveGhost', name: 'Future Projection', color: '#A855F7', enabled: layerState.predictiveGhost },
+    { 
+      id: 'nightLights', 
+      name: 'Night Lights', 
+      color: '#FFB432', 
+      enabled: layerState.nightLights,
+      description: 'Visible light emissions from cities.'
+    },
+    { 
+      id: 'urbanBoundaries', 
+      name: 'Urban Growth', 
+      color: '#64C8FF', 
+      enabled: layerState.urbanBoundaries,
+      description: 'City limits expanding over time.'
+    },
+    { 
+      id: 'vegetation', 
+      name: 'Green Cover', 
+      color: '#22C55E', 
+      enabled: layerState.vegetation,
+      description: 'Forest density and deforestation zones.'
+    },
+    { 
+      id: 'temperature', 
+      name: 'Temperature', 
+      color: '#F97316', 
+      enabled: layerState.temperature,
+      description: 'Heat intensity and urban heat islands.'
+    },
+    { 
+      id: 'predictiveGhost', 
+      name: 'Future Projection', 
+      color: '#A855F7', 
+      enabled: layerState.predictiveGhost,
+      description: 'AI-predicted urban expansion by 2035.'
+    },
   ];
 
   // Memoize data generation (Performance Optimization) - DYNAMIC TIME SCALING
@@ -139,6 +175,41 @@ export const EarthCanvas: React.FC = () => {
       urbanBoundaries: urbanData.features?.length
     });
   }, [nightLightsData, vegetationData, temperatureData, urbanData]);
+  
+  // Zoom Handlers - Explicit Transition for buttons
+  const handleZoomIn = useCallback(() => {
+    setViewState(v => ({ 
+      ...v, 
+      zoom: Math.min(20, (v.zoom || 1) + 1.2), // Slightly larger step
+      transitionDuration: 800, // Smoother
+      transitionInterpolator: new FlyToInterpolator({ curve: 1 }) 
+    }));
+  }, []);
+
+  const handleZoomOut = useCallback(() => {
+    setViewState(v => ({ 
+      ...v, 
+      zoom: Math.max(0, (v.zoom || 1) - 1.2), 
+      transitionDuration: 800,
+      transitionInterpolator: new FlyToInterpolator({ curve: 1 }) 
+    }));
+  }, []);
+
+  // Sync scene changes to view state
+  useEffect(() => {
+    if (isPlaying && currentScene) {
+      const scene = currentScene as any;
+      setViewState(prev => ({
+        ...prev,
+        latitude: scene.latitude,
+        longitude: scene.longitude,
+        zoom: scene.zoom,
+        pitch: scene.pitch,
+        bearing: scene.bearing,
+        transitionDuration: scene.transitionDuration
+      }));
+    }
+  }, [currentScene, isPlaying]);
   
   // Generate Spotlight Mask for cinematic mode
   const spotlightMask = useMemo(() => {
@@ -275,21 +346,44 @@ export const EarthCanvas: React.FC = () => {
     new TextLayer({
       id: 'country-labels',
       data: COUNTRY_DATA,
-      getPosition: (d: any) => d.position,
+      // Add altitude (Z) to lift strictly off the surface to avoid clipping
+      getPosition: (d: any) => [d.position[0], d.position[1], 100000], 
       getText: (d: any) => d.name,
       getSize: 12,
       getSizeScale: 1,
-      getColor: [200, 220, 255, 200],
-      fontFamily: '"Geist Mono", monospace', // Tech look
+      getColor: [200, 220, 255, 200], // Slightly more opaque
+      fontFamily: '"Geist Mono", monospace', 
       fontWeight: 600,
       outlineWidth: 3,
       outlineColor: [0, 0, 0, 255],
-      billboard: true,
+      billboard: true,   // Face camera
+      characterSet: 'auto', // Ensure full charset
     }),
   ].filter(Boolean);
 
   return (
     <>
+      <DeckGL
+        views={new GlobeView({ resolution: 10 })}
+        viewState={viewState}
+        onViewStateChange={({ viewState: newViewState }: any) => setViewState(newViewState)}
+        controller={{
+          inertia: true,
+          scrollZoom: { speed: 0.01, smooth: true },
+          dragRotate: true,
+          touchRotate: true,
+          keyboard: true,
+        }}
+        layers={layers}
+        useDevicePixels={true}
+        style={{ background: '#000005' }}
+      />
+      
+      {/* Footer Info */}
+      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-white/30 pointer-events-none font-mono text-xs uppercase tracking-widest z-10">
+        Year: {currentYear} | Satellite's Diary
+      </div>
+
       {/* City Selector Panel - Hide during cinematic or intro */}
       {!isPlaying && !inIntro && <CitySelector onCitySelect={handleCitySelect} selectedCity={selectedCity} />}
       
@@ -308,24 +402,13 @@ export const EarthCanvas: React.FC = () => {
                className="text-center"
             >
                <h1 className="text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-600 tracking-tighter mb-4">
-                 ANTIGRAVITY
+                 Satellite's Diary
                </h1>
                <p className="text-blue-400 font-mono text-sm tracking-[0.3em] uppercase">Planet Scale Simulation</p>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Top Right Controls - DASHBOARD ONLY */}
-      <div className="absolute top-6 right-6 z-30 flex gap-4">
-        <button
-          onClick={() => setShowDashboard(true)}
-          className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-full font-bold shadow-2xl hover:bg-blue-500 hover:scale-105 transition-all backdrop-blur-md border border-white/20"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
-          DASHBOARD
-        </button>
-      </div>
 
       {/* Cinematic Overlay */}
       <AnimatePresence>
@@ -366,30 +449,15 @@ export const EarthCanvas: React.FC = () => {
       </LayerPanel>
       )}
 
+      {/* Zoom Controls */}
+      {!inIntro && (
+        <ZoomControls onZoomIn={handleZoomIn} onZoomOut={handleZoomOut} />
+      )}
+
       {/* Dashboard Overlay */}
       <AnimatePresence>
-        {showDashboard && <DashboardOverlay year={currentYear} onClose={() => setShowDashboard(false)} />}
+        {showDashboard && <DashboardOverlay year={currentYear} city={selectedCity} onClose={() => setShowDashboard(false)} />}
       </AnimatePresence>
-
-      <DeckGL
-        views={new GlobeView({ resolution: 10 })}
-        viewState={viewState}
-        onViewStateChange={({ viewState: newViewState }: any) => setViewState(newViewState)}
-        controller={{
-          inertia: true,
-          scrollZoom: { speed: 0.01, smooth: true },
-          dragRotate: true,
-          touchRotate: true,
-          keyboard: true,
-        }}
-        layers={layers}
-        useDevicePixels={true}
-        style={{ background: '#000005' }}
-      >
-        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-white/30 pointer-events-none font-mono text-xs uppercase tracking-widest">
-          Year: {currentYear} | Antigravity Engine
-        </div>
-      </DeckGL>
     </>
   );
 };
